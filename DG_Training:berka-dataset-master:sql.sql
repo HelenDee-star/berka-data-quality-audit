@@ -4,7 +4,6 @@
 -- Source path: /Users/helenadesoba/Desktop/D Girl/Data Governance_Materials/DG_Training/berka-dataset-master/
 -- ============================================================
 
-
 -- 1. Inspect the files (nothing is created, we only look)
 
 -- 1.1 Account
@@ -159,5 +158,34 @@ JOIN (
     GROUP BY account_id
 ) t ON a.account_id = t.account_id
 WHERE TRY_STRPTIME(a.date, '%y%m%d') > t.first_trans_date;
+
+-- 7. what are the credits with no operation? (basis for "internal posting")
+
+-- WHY: Query 1 showed 183,114 PRIJEM (credit) transactions with an empty
+--      operation. In the model every column is required (L6), so these rows
+--      would have no Channel. Before deciding how to treat them, we needed to
+--      know what they are.
+-- FINDING: All 183,114 have k_symbol = UROK (interest credited). This
+--      supports adding an "internal posting" value to Channel Type, as a
+--      model decision that needs an approver.
+SELECT k_symbol, COUNT(*) AS row_count
+FROM raw_trans
+WHERE operation IS NULL OR TRIM(operation) = ''
+GROUP BY k_symbol
+ORDER BY row_count DESC;
+
+
+-- 8. Are the 869 clients without an OWNER exactly the DISPONENT clients?
+-- WHY: Query 5 returned 869 clients with no OWNER record, which is the same
+--      number as the DISPONENT rows in disp. The matching count suggested a
+--      cause, but did not prove it. This query tests it directly.
+-- FINDING: Returns 869. Every client without an OWNER is a DISPONENT.
+--      Authorised signatories are out of scope (C3), so these clients appear
+--      as Customers with no Account Holder. This is an effect of the chosen
+--      scope, not a data error, which is why rule R5 is a review queue.
+SELECT COUNT(*) AS clients_only_disponent
+FROM raw_client c
+WHERE NOT EXISTS (SELECT 1 FROM raw_disp d WHERE d.client_id = c.client_id AND d.type = 'OWNER')
+  AND EXISTS     (SELECT 1 FROM raw_disp d WHERE d.client_id = c.client_id AND d.type = 'DISPONENT');
 
 
